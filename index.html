@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#05070b">
+  <title>АЛИНА — 150 см злости</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #05070b; }
+    body {
+      font-family: "Helvetica Neue", Arial, sans-serif; color: #d8dbe0; user-select: none;
+      -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+      overscroll-behavior: none;
+    }
+    canvas#game { display: block; touch-action: none; }
+
+    /* ---------- Сенсорное управление (только на телефоне) ---------- */
+    #touch { display: none; position: absolute; inset: 0; pointer-events: none; }
+    body.touch #touch { display: block; }
+    body.touch #crosshair { display: none; }
+    #lookZone { position: absolute; top: 0; right: 0; bottom: 0; width: 60%; pointer-events: auto; touch-action: none; }
+    #stickZone { position: absolute; left: 0; bottom: 0; width: 40%; height: 75%; pointer-events: auto; touch-action: none; }
+    #stick {
+      position: fixed; width: 130px; height: 130px; margin: -65px 0 0 -65px; border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.05); display: none;
+    }
+    #stickKnob {
+      position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%;
+      background: rgba(255,255,255,0.25); box-shadow: 0 0 14px rgba(0,0,0,0.6);
+    }
+    .tbtn {
+      position: absolute; width: 64px; height: 64px; border-radius: 50%; pointer-events: auto; touch-action: none;
+      background: rgba(10,12,18,0.55); border: 2px solid rgba(255,255,255,0.2); font-size: 28px;
+      display: flex; align-items: center; justify-content: center; backdrop-filter: blur(3px);
+    }
+    .tbtn.on { border-color: rgba(243, 227, 176, 0.8); box-shadow: 0 0 16px rgba(243, 227, 176, 0.35); }
+    .tbtn:active, .tbtn.held { transform: scale(0.92); background: rgba(255,255,255,0.15); }
+    #btnRun   { right: calc(28px + env(safe-area-inset-right)); bottom: 30px; width: 78px; height: 78px; }
+    #btnLight { right: calc(120px + env(safe-area-inset-right)); bottom: 24px; }
+    #btnSushi { right: calc(40px + env(safe-area-inset-right)); bottom: 124px; }
+    #btnPause { right: calc(18px + env(safe-area-inset-right)); top: 16px; width: 46px; height: 46px; font-size: 20px; }
+    body.touch .bars { bottom: auto; top: 86px; width: 150px; }
+    body.touch #leaves { left: calc(26px + env(safe-area-inset-left)); }
+
+    /* Подсказка «поверни телефон» */
+    #rotate {
+      position: fixed; inset: 0; z-index: 50; display: none; flex-direction: column; align-items: center; justify-content: center;
+      background: #05070b; text-align: center; font-size: 20px; gap: 18px;
+    }
+    #rotate .phone { font-size: 64px; animation: turn 2s infinite; }
+    @keyframes turn { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
+    @media (orientation: portrait) { body.touch #rotate { display: flex; } }
+
+    /* Мелкие экраны: всё компактнее */
+    @media (max-height: 500px) {
+      html body .screen { padding: 12px 20px; }
+      html body .title { font-size: 40px; letter-spacing: 10px; margin-right: -10px; }
+      html body .subtitle { font-size: 14px; margin: 0 0 8px; }
+      html body .story { font-size: 12px; line-height: 1.4; margin-bottom: 8px; max-width: 700px; }
+      html body .story br { display: none; }
+      html body .controls { font-size: 11px; margin-bottom: 10px; gap: 2px 14px; }
+      html body .big { font-size: 30px; }
+      html body .stats { margin-bottom: 14px; font-size: 13px; }
+      html body button { padding: 9px 28px; font-size: 15px; }
+      html body .hint { margin-top: 6px; font-size: 11px; }
+      html body #message { font-size: 15px; bottom: 32%; }
+    }
+    .only-touch { display: none !important; }
+    body.touch .only-touch { display: grid !important; }
+    body.touch .only-desktop { display: none !important; }
+
+    /* ---------- Эффекты поверх картинки ---------- */
+    .fx { position: fixed; inset: 0; pointer-events: none; }
+    #vignette { background: radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.85) 100%); }
+    #danger   { background: radial-gradient(ellipse at center, transparent 35%, rgba(120,0,0,0.9) 100%); opacity: 0; }
+    #flash    { background: #8a0000; opacity: 0; mix-blend-mode: screen; }
+    #grain    { width: 100%; height: 100%; opacity: 0.035; }
+
+    /* ---------- HUD ---------- */
+    #hud { position: fixed; inset: 0; pointer-events: none; display: none; }
+    #leaves {
+      position: absolute; top: 22px; left: 26px; font-size: 20px; letter-spacing: 1px;
+      color: #d9ef8a; text-shadow: 0 0 12px rgba(200, 240, 110, 0.7);
+    }
+    .bars { position: absolute; left: 26px; bottom: 26px; width: 200px; }
+    .bar-label { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; opacity: 0.6; margin: 10px 0 4px; }
+    .bar { height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
+    .bar > div { height: 100%; width: 100%; border-radius: 3px; transition: background 0.3s; }
+    #battery { background: #f3e3b0; }
+    #stamina { background: #8fb3d9; }
+    #message {
+      position: absolute; bottom: 18%; width: 100%; text-align: center; font-size: 22px;
+      letter-spacing: 1px; text-shadow: 0 0 10px #000, 0 0 20px #000; opacity: 0; transition: opacity 0.6s;
+    }
+    #sushi {
+      position: absolute; top: 52px; left: 26px; font-size: 18px; color: #ffb38a;
+      text-shadow: 0 0 10px rgba(255, 140, 90, 0.6);
+    }
+    #shout {
+      position: absolute; transform: translate(-50%, -100%); padding: 6px 12px; border-radius: 12px;
+      background: rgba(255, 255, 255, 0.92); color: #a0100c; font-weight: bold; font-size: 18px; white-space: nowrap;
+      display: none; box-shadow: 0 0 20px rgba(255, 0, 0, 0.4);
+    }
+    #shout::after {
+      content: ""; position: absolute; left: 50%; bottom: -8px; margin-left: -8px;
+      border: 8px solid transparent; border-top-color: rgba(255, 255, 255, 0.92); border-bottom: 0;
+    }
+    #crosshair {
+      position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px;
+      border-radius: 50%; background: rgba(255,255,255,0.35);
+    }
+
+    /* ---------- Экраны: старт, пауза, проигрыш, победа ---------- */
+    .screen {
+      position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; background: rgba(3, 4, 7, 0.88); padding: 30px;
+    }
+    .screen.show { display: flex; }
+    .title {
+      font-family: Georgia, "Times New Roman", serif; font-size: 96px; letter-spacing: 22px; color: #c9302c;
+      text-shadow: 0 0 30px rgba(200, 30, 30, 0.6); animation: flicker 4s infinite; margin-right: -22px;
+    }
+    .subtitle { font-family: Georgia, serif; font-style: italic; font-size: 22px; opacity: 0.75; margin: 6px 0 28px; }
+    .story { max-width: 560px; line-height: 1.65; font-size: 16px; opacity: 0.85; margin-bottom: 26px; }
+    .story b { color: #d9ef8a; font-weight: normal; }
+    .controls { display: grid; grid-template-columns: auto auto; gap: 6px 18px; font-size: 14px; opacity: 0.7; margin-bottom: 30px; text-align: left; }
+    kbd {
+      display: inline-block; min-width: 22px; padding: 2px 6px; border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 4px; font-family: inherit; font-size: 12px; text-align: center;
+    }
+    button {
+      font: inherit; font-size: 18px; letter-spacing: 3px; text-transform: uppercase; color: #eee; cursor: pointer;
+      background: transparent; border: 1px solid rgba(201, 48, 44, 0.8); padding: 14px 42px; border-radius: 2px;
+      transition: background 0.2s, box-shadow 0.2s;
+    }
+    button:hover { background: rgba(201, 48, 44, 0.2); box-shadow: 0 0 24px rgba(201, 48, 44, 0.4); }
+    .hint { font-size: 13px; opacity: 0.45; margin-top: 18px; }
+    .big { font-family: Georgia, serif; font-size: 54px; margin-bottom: 14px; }
+    #over .big { color: #c9302c; }
+    #win .big  { color: #d9ef8a; text-shadow: 0 0 20px rgba(200,240,110,0.5); }
+    .stats { opacity: 0.7; margin-bottom: 30px; font-size: 17px; }
+
+    @keyframes flicker {
+      0%, 92%, 100% { opacity: 1; }
+      93% { opacity: 0.3; } 94% { opacity: 1; } 96% { opacity: 0.5; } 97% { opacity: 1; }
+    }
+  </style>
+
+  <!-- Three.js подключаем прямо из интернета, ничего устанавливать не нужно -->
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- Эффекты -->
+  <div id="danger" class="fx"></div>
+  <div id="vignette" class="fx"></div>
+  <canvas id="grain" class="fx" width="480" height="270"></canvas>
+  <div id="flash" class="fx"></div>
+
+  <!-- Интерфейс во время игры -->
+  <div id="hud">
+    <div id="leaves">💵 0 / 5</div>
+    <div id="sushi">🍣 0</div>
+    <div id="shout"></div>
+    <div id="crosshair"></div>
+    <div class="bars">
+      <div class="bar-label">Фонарик</div>
+      <div class="bar"><div id="battery"></div></div>
+      <div class="bar-label">Дыхалка</div>
+      <div class="bar"><div id="stamina"></div></div>
+    </div>
+    <div id="message"></div>
+
+    <!-- Сенсорное управление: появляется только на телефоне -->
+    <div id="touch">
+      <div id="stickZone"><div id="stick"><div id="stickKnob"></div></div></div>
+      <div id="lookZone"></div>
+      <div class="tbtn" id="btnRun">🏃</div>
+      <div class="tbtn on" id="btnLight">🔦</div>
+      <div class="tbtn" id="btnSushi">🍣</div>
+      <div class="tbtn" id="btnPause">⏸</div>
+    </div>
+  </div>
+
+  <div id="rotate">
+    <div class="phone">📱</div>
+    <div>Поверни телефон горизонтально</div>
+  </div>
+
+  <!-- Стартовый экран -->
+  <div id="start" class="screen show">
+    <div class="title">АЛИНА</div>
+    <div class="subtitle">150 см злости</div>
+    <p class="story">
+      Алматы, январь. Ночь. Во всём микрорайоне вырубили свет.<br>
+      Ты сказал, что купишь GTA 6. Это игра твоего детства. Алина сказала: <i>«Не покупай»</i>.<br>
+      Она спрятала все твои деньги по двору и заперла ворота. Теперь она где-то там, в темноте…<br><br>
+      Собери <b>5 пачек денег на GTA 6</b> и прорвись в магазин.<br>
+      Её слабость — <span style="color:#ffb38a">суши</span> 🍣
+    </p>
+    <div class="controls only-touch">
+      <span>🕹 джойстик слева</span><span>идти (до края — бежать)</span>
+      <span>👆 палец справа</span><span>смотреть</span>
+      <span>🏃 🔦 🍣</span><span>бег · фонарик · кинуть суши</span>
+    </div>
+    <div class="controls only-desktop">
+      <span><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></span><span>идти</span>
+      <span><kbd>Мышь</kbd></span><span>смотреть</span>
+      <span><kbd>Shift</kbd></span><span>бежать (громко!)</span>
+      <span><kbd>F</kbd></span><span>фонарик (Алина видит свет)</span>
+      <span><kbd>Q</kbd></span><span>кинуть суши (Алина отвлечётся)</span>
+      <span><kbd>Esc</kbd></span><span>пауза</span>
+    </div>
+    <button id="startBtn">За GTA 6!</button>
+    <div class="hint">Лучше играть в наушниках 🎧</div>
+  </div>
+
+  <div id="pause" class="screen">
+    <div class="big">Пауза</div>
+    <button id="resumeBtn">Продолжить</button>
+  </div>
+
+  <div id="over" class="screen">
+    <div class="big">Алина тебя нашла</div>
+    <div class="stats" id="overStats"></div>
+    <button id="againBtn1">Ещё раз</button>
+  </div>
+
+  <div id="win" class="screen">
+    <div class="big">GTA 6 куплена! 🎮</div>
+    <div class="stats" id="winStats"></div>
+    <button id="againBtn2">Ещё раз</button>
+  </div>
+
+  <script type="module" src="game.js"></script>
+</body>
+</html>
